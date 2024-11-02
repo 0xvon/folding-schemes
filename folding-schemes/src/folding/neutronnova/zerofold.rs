@@ -5,7 +5,7 @@ use ark_std::sync::Arc;
 
 pub struct ZeroFoldFromCCS<F: PrimeField> {
     pub G: Vec<Arc<DenseMultilinearExtension<F>>>,
-    pub ccs: CCS<F>,
+    pub F_poly: Vec<(F, Vec<usize>)>,
 }
 
 impl<F: PrimeField> ZeroFoldFromCCS<F> {
@@ -24,21 +24,29 @@ impl<F: PrimeField> ZeroFoldFromCCS<F> {
             })
             .collect();
 
+        let f_poly: Vec<(F, Vec<usize>)> = ccs
+            .c
+            .iter()
+            .zip(ccs.S.iter())
+            .map(|(&coeff, indices)| (coeff, indices.clone()))
+            .collect();
+
         Self {
             G: g_mles,
-            ccs: ccs.clone(),
+            F_poly: f_poly,
         }
     }
 
+    // Evaluate Q(x) = F(G(x)) using the precomputed G values
     pub fn evaluate_q(&self, x: &[F]) -> F {
         let g_values: Vec<F> = self
             .G
             .iter()
-            .map(|mle| mle.evaluate(x).unwrap()) // 各 MLE を z で評価
+            .map(|mle| mle.evaluate(x).unwrap()) // Evaluate each MLE at x
             .collect();
 
         let mut result = F::zero();
-        for (coeff, indices) in self.ccs.c.iter().zip(self.ccs.S.iter()) {
+        for (coeff, indices) in self.F_poly.iter() {
             let product = indices.iter().map(|&i| g_values[i]).product::<F>();
             result += *coeff * product;
         }
@@ -66,7 +74,7 @@ pub mod tests {
             "Mismatch in number of MLEs and matrices"
         );
 
-        // Step 4: Print the result and assert its correctness
+        // Check that Q(x) evaluates to zero for all {0,1}^s combinations
         let x_list = [
             [Fr::zero(), Fr::zero()],
             [Fr::zero(), Fr::one()],
@@ -75,7 +83,13 @@ pub mod tests {
         ];
         for x in x_list.iter() {
             let q_value = zc.evaluate_q(x);
-            assert_eq!(q_value, Fr::zero(), "Q(z) evaluated at z = 0 is not zero");
+            assert_eq!(
+                q_value,
+                Fr::zero(),
+                "Q(x) evaluated at x = {:?} is not zero: {:?}",
+                x,
+                q_value
+            );
         }
     }
 }
