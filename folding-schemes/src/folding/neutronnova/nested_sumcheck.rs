@@ -15,7 +15,8 @@ impl<F: PrimeField> From<ZeroCheckInstance<F>> for NestedSumCheckInstance<F> {
     fn from(zc: ZeroCheckInstance<F>) -> Self {
         // Step 1: Generate a random challenge tau
         // TODO: Use a proper RNG
-        let tau = F::one();
+        let mut rng = ark_std::test_rng();
+        let tau = F::rand(&mut rng);
 
         // Step 2: Compute Te as a power of tau
         let mut evaluations = vec![];
@@ -78,6 +79,7 @@ impl<F: PrimeField> NestedSumCheckInstance<F> {
         }
         T
     }
+
     // Evaluate Q(x) = F(G(x)) using the precomputed G values
     pub fn evaluate_q(&self, x: &[F]) -> F {
         let g_values: Vec<F> = self
@@ -93,6 +95,11 @@ impl<F: PrimeField> NestedSumCheckInstance<F> {
         }
         result
     }
+
+    // pub fn fold(&self, other: &Self) -> Self {
+    //     let mut rng = ark_std::test_rng();
+    //     let gamma = F::rand(&mut rng);
+    // }
 }
 
 #[cfg(test)]
