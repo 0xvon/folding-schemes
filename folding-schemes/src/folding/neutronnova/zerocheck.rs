@@ -3,12 +3,13 @@ use ark_ff::PrimeField;
 use ark_poly::{DenseMultilinearExtension, MultilinearExtension};
 use ark_std::sync::Arc;
 
-pub struct ZeroFoldFromCCS<F: PrimeField> {
+pub struct ZeroCheckInstance<F: PrimeField> {
     pub G: Vec<Arc<DenseMultilinearExtension<F>>>,
     pub F_poly: Vec<(F, Vec<usize>)>,
+    pub z: Vec<F>,
 }
 
-impl<F: PrimeField> ZeroFoldFromCCS<F> {
+impl<F: PrimeField> ZeroCheckInstance<F> {
     // Computes Q(x) = F(G(z)) as a VirtualPolynomial
     // where F(m_1, m_2, ..., m_n) = \sum^q c_i * \prod_{j \in S_i} m_j
     // and G(z) = [M_1(z), M_2(z), ..., M_n(z)]
@@ -34,6 +35,7 @@ impl<F: PrimeField> ZeroFoldFromCCS<F> {
         Self {
             G: g_mles,
             F_poly: f_poly,
+            z: z.to_vec(),
         }
     }
 
@@ -62,11 +64,11 @@ pub mod tests {
     use ark_std::{One, Zero};
 
     #[test]
-    fn test_eval_zerofold_from_css() {
+    fn test_eval_zerocheck_from_css() {
         let ccs = get_test_ccs::<Fr>();
         let z = get_test_z::<Fr>(3);
 
-        let zc = ZeroFoldFromCCS::<Fr>::from_ccs(ccs.clone(), &z);
+        let zc = ZeroCheckInstance::<Fr>::from_ccs(ccs.clone(), &z);
 
         assert_eq!(
             zc.G.len(),
