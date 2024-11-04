@@ -5,6 +5,7 @@ use ark_std::rand::Rng;
 use ark_std::sync::Arc;
 use ark_std::test_rng;
 
+#[derive(Debug)]
 pub struct NestedSumCheckInstance<F: PrimeField> {
     pub G: Vec<Arc<DenseMultilinearExtension<F>>>,
     pub F_poly: Vec<(F, Vec<usize>)>,
@@ -90,10 +91,122 @@ impl<F: PrimeField> NestedSumCheckInstance<F> {
         result
     }
 
-    // pub fn fold(&self, other: &Self) -> Self {
-    //     let mut rng = ark_std::test_rng();
-    //     let gamma = F::rand(&mut rng);
-    // }
+    pub fn fold(&self, other: &Self) -> Self {
+        // Step 0: Check that instances are compatible for folding
+        assert_eq!(
+            self.G.len(),
+            other.G.len(),
+            "Cannot fold instances: G vectors have different lengths"
+        );
+        assert_eq!(
+            self.F_poly.len(),
+            other.F_poly.len(),
+            "Cannot fold instances: F_poly vectors have different lengths"
+        );
+        assert_eq!(
+            self.z.len(),
+            other.z.len(),
+            "Cannot fold instances: z vectors have different lengths"
+        );
+        assert_eq!(
+            self.e1.num_vars,
+            other.e1.num_vars,
+            "Cannot fold instances: e1 have different number of variables"
+        );
+        assert_eq!(
+            self.e2.num_vars,
+            other.e2.num_vars,
+            "Cannot fold instances: e2 have different number of variables"
+        );
+
+        // Step 1: Generate random challenges gamma and rho
+        let mut rng = test_rng();
+        let gamma = F::rand(&mut rng);
+        // let rho = F::rand(&mut rng);
+
+        // Step 2: Fold the G vectors
+        let folded_G = self
+            .G
+            .iter()
+            .zip(&other.G)
+            .map(|(g1, g2)| {
+                // Ensure the number of variables matches
+                assert_eq!(
+                    g1.num_vars, g2.num_vars,
+                    "MLEs in G have different numbers of variables"
+                );
+
+                // Combine the evaluations
+                let combined_evals = g1
+                    .evaluations
+                    .iter()
+                    .zip(&g2.evaluations)
+                    .map(|(e1, e2)| *e1 + gamma * (*e2))
+                    .collect::<Vec<F>>();
+
+                // Create a new MLE with the combined evaluations
+                Arc::new(DenseMultilinearExtension::from_evaluations_vec(
+                    g1.num_vars,
+                    combined_evals,
+                ))
+            })
+            .collect::<Vec<_>>();
+
+        // Step 3: Fold the F_poly vectors
+        let mut folded_F_poly = Vec::new();
+        for ((coeff1, indices1), (coeff2, indices2)) in self.F_poly.iter().zip(&other.F_poly) {
+            // Assuming that indices1 and indices2 are the same
+            assert_eq!(
+                indices1, indices2,
+                "Cannot fold instances: F_poly indices do not match"
+            );
+            let new_coeff = *coeff1 + gamma * (*coeff2);
+            folded_F_poly.push((new_coeff, indices1.clone()));
+        }
+
+        // Step 4: Fold the z vectors
+        let folded_z = self
+            .z
+            .iter()
+            .zip(&other.z)
+            .map(|(z1, z2)| *z1 + gamma * (*z2))
+            .collect::<Vec<F>>();
+
+        // Step 5: Fold tau
+        let folded_tau = self.tau + gamma * other.tau;
+
+        // Step 6: Fold e1 and e2
+        let folded_e1_evals = self
+            .e1
+            .evaluations
+            .iter()
+            .zip(&other.e1.evaluations)
+            .map(|(e1_val, e2_val)| *e1_val + gamma * (*e2_val))
+            .collect::<Vec<F>>();
+
+        let folded_e2_evals = self
+            .e2
+            .evaluations
+            .iter()
+            .zip(&other.e2.evaluations)
+            .map(|(e1_val, e2_val)| *e1_val + gamma * (*e2_val))
+            .collect::<Vec<F>>();
+
+        let folded_e1 =
+            DenseMultilinearExtension::from_evaluations_vec(self.e1.num_vars, folded_e1_evals);
+        let folded_e2 =
+            DenseMultilinearExtension::from_evaluations_vec(self.e2.num_vars, folded_e2_evals);
+
+        // Step 7: Return the new folded instance
+        Self {
+            G: folded_G,
+            F_poly: folded_F_poly,
+            z: folded_z,
+            tau: folded_tau,
+            e1: folded_e1,
+            e2: folded_e2,
+        }
+    }
 }
 
 // pub struct PowerCheckInstance<F: PrimeField> {
@@ -163,6 +276,23 @@ pub mod tests {
         let zc = ZeroCheckInstance::<Fr>::from_ccs(ccs.clone(), &z);
         let nsc: NestedSumCheckInstance<Fr> = zc.into();
 
+        let T = nsc.compute_T();
+        assert_eq!(T, Fr::zero(), "T is not zero: {:?}", T);
+    }
+
+    #[test]
+    fn test_fold_nsc() {
+        let ccs1 = get_test_ccs::<Fr>();
+        let z1 = get_test_z::<Fr>(3);
+        let zc1 = ZeroCheckInstance::<Fr>::from_ccs(ccs1.clone(), &z1);
+        let nsc1: NestedSumCheckInstance<Fr> = zc1.into();
+
+        let ccs2 = get_test_ccs::<Fr>();
+        let z2 = get_test_z::<Fr>(3);
+        let zc2 = ZeroCheckInstance::<Fr>::from_ccs(ccs2.clone(), &z2);
+        let nsc2: NestedSumCheckInstance<Fr> = zc2.into();
+
+        let nsc = nsc1.fold(&nsc2);
         let T = nsc.compute_T();
         assert_eq!(T, Fr::zero(), "T is not zero: {:?}", T);
     }
